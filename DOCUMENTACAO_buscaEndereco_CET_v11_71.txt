@@ -1,0 +1,143 @@
+🗺️ Sistema de Geocodificação e Enriquecimento de Endereços – CET-SP
+Versão: 11.71
+Desenvolvido por: Vitor Henrique Leal Lopes Braz
+
+-------------------------------------------------------------------------------
+📘 Visão Geral
+
+Este projeto implementa um sistema de geocodificação, busca e enriquecimento de endereços voltado para o contexto urbano da cidade de São Paulo, com integração direta às bases internas da CET-SP (Companhia de Engenharia de Tráfego).
+O sistema permite converter endereços textuais em coordenadas geográficas (latitude e longitude), identificar informações administrativas (GET, DET, Subprefeitura, Distrito e Classificação Viária) e resolver casos especiais de vias, rodovias e marginais.
+
+A aplicação foi desenvolvida em Python, com ênfase em tratamento de dados espaciais, normalização de endereços e integração com serviços de geoprocessamento.
+Sua arquitetura modular permite a reutilização de funções e integração com pipelines de dados da CET-SP.
+
+-------------------------------------------------------------------------------
+⚙️ Célula 1 – Importações e Configuração Inicial
+
+Descrição:
+Esta célula importa módulos padrão do Python e bibliotecas de terceiros para manipulação de dados tabulares, geoespaciais e requisições web.
+
+Função da Célula:
+- Importar bibliotecas essenciais para:
+  - Processamento de dados tabulares (pandas);
+  - Geoprocessamento (geopandas, shapely);
+  - Cálculo geodésico (math e funções trigonométricas);
+  - Manipulação de XML para respostas SOAP (xml.etree.ElementTree);
+  - Requisições HTTP (requests);
+  - Expressões regulares (re) para tratamento de textos;
+  - Tipagem moderna (typing e __future__);
+  - Registro de logs para rastreabilidade e depuração.
+
+Destaques Técnicos:
+- A tipagem moderna do Python garante legibilidade e compatibilidade com IDEs inteligentes.
+- O logging é configurado com formato padrão, registrando horário, nível e mensagem.
+
+-------------------------------------------------------------------------------
+📦 Célula 2 – Importação de Funções de Similaridade
+
+Nesta célula, são importadas funções auxiliares de um módulo externo responsável pela busca por similaridade textual entre endereços e cadastros de logradouros.
+Essas funções são usadas como mecanismo de fallback, quando a busca principal por geocodificação não encontra resultados exatos.
+
+Principais Componentes:
+- busca_candidatos_df → Retorna um DataFrame de logradouros semelhantes ao texto pesquisado, com base em similaridade textual (TF-IDF).
+- busca_candidatos_por_similaridade → Retorna uma lista simplificada de candidatos (tuplas com logradouro e codlog).
+
+Variável importante:
+- cadastro → Caminho do arquivo .xlsx contendo o cadastro de ruas da CET-SP.
+
+-------------------------------------------------------------------------------
+🧩 Célula 3 – Definição de Funções de Normalização e Geometria
+
+Esta célula define funções utilitárias que são a base para todo o processamento do sistema.
+
+Funções Principais:
+- def_calcular_distancia_km(lat1, lon1, lat2, lon2): Calcula distância geodésica entre dois pontos.
+- def_remover_tipo_via(endereco): Remove prefixos comuns (RUA, AVENIDA etc.).
+- def_com_coringa(s): Adiciona coringa % para buscas SQL-like.
+- def_logradouro_pmsp(row): Monta o nome normalizado de logradouro.
+- def_montar_endereco_completo(row, numero): Concatena codlog e número.
+- def_df_nao_encontrado(): Retorna DataFrame padrão quando não há correspondência.
+
+-------------------------------------------------------------------------------
+🌍 Célula 4 – Consulta ao GeoServer
+
+Implementa integração com o GeoServer interno da CET, responsável por fornecer dados espaciais adicionais.
+
+Função principal: def_obter_dados_geoserver(lat, lon)
+Descrição:
+Dado um ponto geográfico, realiza requisição WMS/GetFeatureInfo ao GeoServer e retorna atributos espaciais das camadas de referência.
+
+Camadas consultadas:
+- GET, DET, Subprefeitura, Distrito, Região Oficial, Classificação Viária.
+
+-------------------------------------------------------------------------------
+🧭 Célula 5 – Busca de Endereços e Geocodificação
+
+Contém funções principais responsáveis por consultar os serviços de geocodificação da CET.
+
+Funções:
+- def_buscar_enderecos(endereco): Consulta endpoint da CET e retorna DataFrame.
+- def_buscar_latlon_exato(endereco): Obtém coordenadas via SOAP.
+- def_buscar_enderecos_relativo(term): Executa buscas parciais com coringa.
+
+Tratamento de erros:
+Blocos try/except registram erros de rede, timeouts e parse de XML via logging.
+
+-------------------------------------------------------------------------------
+🧠 Célula 6 – Fallback por Similaridade
+
+Integra o mecanismo de busca por similaridade textual, permitindo encontrar endereços quando não há correspondência exata.
+
+Função: def_buscar_endereco_com_fallback(endereco, numero, lat_origem, lon_origem, cadastro_path, min_sim, top_k)
+
+Descrição:
+- Realiza busca normal;
+- Caso não haja resultado, usa busca_candidatos_df para gerar candidatos semelhantes;
+- Resolve via codlog e enriquece com dados do GeoServer.
+
+Saída:
+DataFrame único com o melhor candidato (codlog, logradouro_PMSP, latitude, longitude, distância, GET, DET, Subprefeitura, Distrito, Região, Classificação, similaridade).
+
+-------------------------------------------------------------------------------
+🗺️ Célula 7 – Determinação de Circunscrição
+
+Verifica se as coordenadas encontradas estão dentro ou fora do município de São Paulo.
+
+Função: def_definir_circunscricao_via_shapefile(df, col_lat, col_lon, shapefile_sp)
+
+Descrição:
+- Carrega shapefile oficial de SP;
+- Cria pontos a partir de lat/lon;
+- Determina se cada ponto está dentro do limite municipal;
+- Adiciona coluna CIRCUNSCRICAO ao DataFrame.
+
+-------------------------------------------------------------------------------
+🧩 Célula 8 – Integração Completa e Função Mestre
+
+Reúne todas as funções em um fluxo coeso, permitindo a resolução completa de endereços.
+
+Função principal: def_buscar_enderecos_com_latlon(endereco, numero, lat_origem, lon_origem, max_candidatos, max_candidatos_relativo)
+
+Fluxo resumido:
+1. Normaliza texto do endereço;
+2. Detecta marginais ou rodovias;
+3. Gera variações de candidatos;
+4. Busca relativa e exata;
+5. Obtém coordenadas;
+6. Calcula distância;
+7. Enriquecer via GeoServer;
+8. Ordena resultados por proximidade.
+
+Resultado:
+DataFrame padronizado com colunas enriquecidas, pronto para integração com dashboards ou APIs.
+
+-------------------------------------------------------------------------------
+🧾 Conclusão
+
+O sistema buscaEndereco_CET_v11.71 é uma solução completa e modular para georreferenciamento inteligente de endereços, unindo:
+- Integração com bases institucionais (CET + GeoServer);
+- Fallback com técnicas de similaridade textual;
+- Geoprocessamento automatizado com GeoPandas;
+- Tratamento robusto de exceções e logging.
+
+Seu design prioriza reutilização, clareza de resultados e facilidade de integração, tornando-o uma ferramenta eficiente para análise territorial e suporte à gestão de tráfego urbano em São Paulo.
